@@ -10,14 +10,17 @@
 //Arduino serial stuff, customize to your needs
 void setup(){
     Serial.begin(9600);
+    pinMode(9,OUTPUT);
 }
 
 void loop(){
-    if (Serial.available())  {
-
+    if (Serial.available()) { 
         switch (Serial.read()) {
             case 'a':
                 Serial.println('a');
+                digitalWrite(9,HIGH);
+                delay(20);
+                digitalWrite(9,LOW);
             break;
         }
     }
