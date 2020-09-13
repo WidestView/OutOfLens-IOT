@@ -1,8 +1,9 @@
 {
+  "type": "commonjs",
   "name": "OutOfLens-IOT",
   "version": "1.0.0",
   "description": "Client server for controlling arduinos",
-  "main": "index.js",
+  "main": "webserver.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
@@ -10,7 +11,10 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@types/express": "^4.17.8",
     "@types/node": "^14.10.1",
-    "@types/serialport": "^8.0.1"
+    "@types/serialport": "^8.0.1",
+    "express": "^4.17.1",
+    "serialport": "^9.0.1"
   }
 }
