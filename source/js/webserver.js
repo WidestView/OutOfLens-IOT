@@ -9,7 +9,7 @@ const express_1 = __importDefault(require("express"));
 const body_parser_1 = __importDefault(require("body-parser"));
 const Readline = serialport_1.default.parsers.Readline;
 /// Globals
-const ports = new Map();
+const arduinos = new Map();
 const WEB_PORT = 3333;
 const SERVER_HOSTNAME = 'testesdelifybr.ddns.net';
 const PASSWORD = "5eeb219ebc72cd90a4020538b28593fbfac63d2e0a8d6ccf6c28c21c97f00ea6";
@@ -26,9 +26,20 @@ function validateCrendential(credential) {
     return credential.ip === SERVER_IP && credential.password === PASSWORD;
 }
 function verifyArduinoInsertionRequest(request) {
-    ports.forEach((serial, arduino) => {
+    let reasons = "";
+    arduinos.forEach((serial, arduino) => {
+        if (request.arduinoName == arduino) {
+            reasons += `That is already an arduino called '${arduino}'\n`;
+        }
+        if (request.serialPort == serial.path && Number(request.baudRate) == serial.baudRate) {
+            reasons += "This port and baudrate are already busy, try other\n";
+        }
     });
-    return true;
+    let response = {
+        sucess: (reasons == "") ? true : false,
+        reason: reasons
+    };
+    return response;
 }
 /// EXECUTION
 const app = express_1.default();
@@ -40,30 +51,23 @@ app.listen(WEB_PORT, () => {
 });
 app.post('/add', function (req, res) {
     let credentials = { ip: req.ip.substring(req.ip.lastIndexOf(':') + 1), password: req.body.password };
+    let request = req.body;
     if (!validateCrendential(credentials)) {
-        res.send(JSON.stringify({
-            success: false,
+        let response = {
+            sucess: false,
             reason: 'Invalid Credentials'
-        }));
+        };
+        res.send(JSON.stringify(response));
         return;
     }
-    let request = req.body;
-    //TODO
-    //verify if this arduinoname or exact same port and baudrate already exists
-    //verify if this COM can be opened
-    if (!verifyArduinoInsertionRequest(request)) {
-        res.send(JSON.stringify({
-            success: false,
-            reason: 'An Arduino with that name is already created or this port is busy'
-        }));
+    let verify = verifyArduinoInsertionRequest(request);
+    if (!verify.sucess) {
+        res.send(JSON.stringify(verify));
         return;
     }
     let serial = new serialport_1.default(request.serialPort, { baudRate: Number(request.baudRate) });
-    ports.set(request.arduinoName, serial);
+    arduinos.set(request.arduinoName, serial);
     console.log(`Arduino ${request.arduinoName} was added.`);
-    ports.forEach((serial, arduino) => console.log(`Arduino: ${arduino}/Port = ${serial.path} | BaudRate= ${serial.baudRate}`));
-    res.send(JSON.stringify({
-        success: true,
-        reason: 'Insertion executed successfully'
-    }));
+    arduinos.forEach((serial, arduino) => console.log(`Arduino: ${arduino}/Port = ${serial.path} | BaudRate= ${serial.baudRate}`));
+    res.send(JSON.stringify({ sucess: true, reason: 'Insertion executed successfully' }));
 });

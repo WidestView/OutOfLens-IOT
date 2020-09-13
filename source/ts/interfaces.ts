@@ -6,6 +6,10 @@ export namespace Interfaces {
         serialPort: string,
         baudRate: string
     }
+    export interface ArduinoInsertionResponse {
+        sucess : boolean,
+        reason : string
+    }
 
     export interface Credential {
         ip: string,
