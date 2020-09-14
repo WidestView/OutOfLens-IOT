@@ -16,11 +16,14 @@ void setup(){
 void loop(){
     if (Serial.available()) { 
         switch (Serial.read()) {
-            case 'a':
-                Serial.println('a');
+            case 'p':
+                Serial.println("p");
                 digitalWrite(9,HIGH);
                 delay(20);
                 digitalWrite(9,LOW);
+            break;
+            case 'a':
+                Serial.println("Led ligada!");
             break;
         }
     }
