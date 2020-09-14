@@ -17,6 +17,21 @@ const serialport_1 = __importDefault(require("serialport"));
 const express_1 = __importDefault(require("express"));
 const body_parser_1 = __importDefault(require("body-parser"));
 const Readline = serialport_1.default.parsers.Readline;
+class Arduino {
+    constructor(name, serial) {
+        this.Data = [];
+        this.ArduinoName = name;
+        this.Serial = serial;
+        this.Parser = this.Serial.pipe(new Readline({ delimiter: '\n' }));
+        this.Parser.on('data', data => {
+            this.Data.push(data);
+            this.Data.map((value) => { console.log(value); });
+        });
+    }
+    send(value) {
+        this.Serial.write(value);
+    }
+}
 /// Globals
 const arduinos = new Map();
 const WEB_PORT = 3333;
@@ -36,13 +51,14 @@ function validateCrendential(credential) {
 }
 function verifyArduinoInsertionRequest(request) {
     return __awaiter(this, void 0, void 0, function* () {
+        console.log(`Request recieved for opening ${request.serialPort} at ${request.baudRate} as ${request.arduinoName}`);
         let reasons = [];
-        arduinos.forEach((serial, arduino) => {
-            if (request.arduinoName === arduino) {
-                reasons.push(`That is already an arduino called '${arduino}'`);
+        arduinos.forEach((ard, name) => {
+            if (request.arduinoName === name) {
+                reasons.push(`That is already an arduino called '${name}'`);
             }
-            if (request.serialPort === serial.path && Number(request.baudRate) == serial.baudRate) {
-                reasons.push("This port and baudrate are already busy, try other");
+            if (request.serialPort === ard.Serial.path) {
+                reasons.push("This port is already used by: " + ard.ArduinoName + ", try other");
             }
         });
         let ports = yield serialport_1.default.list();
@@ -57,28 +73,25 @@ function verifyArduinoInsertionRequest(request) {
         return response;
     });
 }
-function pingArduino(serial) {
+function pingSerial(serial) {
     return __awaiter(this, void 0, void 0, function* () {
-        yield new Promise((onResult, onError) => {
-            serial.on('open', () => {
-                console.log('Serial is Open');
-                onResult();
+        console.log('Pinging ' + serial.path + ' at ' + serial.baudRate);
+        let parser = serial.pipe(new Readline({ delimiter: '\n' }));
+        try {
+            let data = yield new Promise((onResult, onError) => {
+                parser.on('data', data => {
+                    onResult(data);
+                });
+                setTimeout(() => serial.write('p'), 1000);
+                setTimeout(() => onError(), 1100); // VERIFY IF THE RETURN IS ACTUALLY 'p'
             });
-        });
-        console.log('Pinging Arduino');
-        console.log(serial);
-        serial.write('a');
-        const parser = new Readline({ 'delimiter': '\n' });
-        serial.pipe(parser);
-        let data = yield new Promise((onResult, onError) => {
-            parser.on('data', data => {
-                console.log('Data received');
-                onResult(data);
-            });
-            serial.write('a');
-        });
-        console.log('Result is:', data);
-        return data === 'a';
+        }
+        catch (_a) {
+            console.log('NOT Pong');
+            return false;
+        }
+        console.log('Pong');
+        return true;
     });
 }
 /// EXECUTION
@@ -103,9 +116,8 @@ app.post('/add', function (req, res) {
             res.send(JSON.stringify(result));
             return;
         }
-        ///
         let serial = new serialport_1.default(request.serialPort, { baudRate: Number(request.baudRate) });
-        let isValid = yield pingArduino(serial);
+        let isValid = yield pingSerial(serial);
         if (!isValid) {
             let response = {
                 sucess: false,
@@ -115,9 +127,16 @@ app.post('/add', function (req, res) {
             serial.close();
             return;
         }
-        arduinos.set(request.arduinoName, serial);
+        let ard = new Arduino(request.arduinoName, serial);
+        arduinos.set(request.arduinoName, ard);
         console.log(`Arduino ${request.arduinoName} was added.`);
-        arduinos.forEach((serial, arduino) => console.log(`Arduino: ${arduino}/Port = ${serial.path} | BaudRate= ${serial.baudRate}`));
-        res.send(JSON.stringify({ sucess: true, reason: 'Insertion executed successfully' }));
+        console.log("Arduinos:");
+        arduinos.forEach((serial, arduino) => console.log(` Arduino: ${arduino}/Port = ${ard.Serial.path} | BaudRate= ${ard.Serial.baudRate}`));
+        ard.send('a');
+        res.send(JSON.stringify({ sucess: true, reason: ard.ArduinoName + ' added successfully' }));
+    });
+});
+app.post('/cmd', function (req, res) {
+    return __awaiter(this, void 0, void 0, function* () {
     });
 });
