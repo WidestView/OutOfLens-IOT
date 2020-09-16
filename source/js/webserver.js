@@ -19,22 +19,31 @@ const body_parser_1 = __importDefault(require("body-parser"));
 const Readline = serialport_1.default.parsers.Readline;
 class Arduino {
     constructor(name, serial) {
-        this.Data = [];
+        this.DataLog = [];
         this.ArduinoName = name;
         this.Serial = serial;
         this.Parser = this.Serial.pipe(new Readline({ delimiter: '\n' }));
         this.Parser.on('data', data => {
-            this.Data.push(data);
-            this.Data.map((value) => { console.log(value); });
+            this.DataLog.push(data);
+            this.DataLog.map((value) => { console.log(value); });
         });
     }
     send(value) {
         this.Serial.write(value);
     }
+    read() {
+        return this.DataLog;
+    }
+    readAndClear() {
+        let result;
+        result = this.DataLog;
+        this.DataLog = [];
+        return result;
+    }
 }
 /// Globals
 const arduinos = new Map();
-const WEB_PORT = 3333;
+const WEB_PORT = 8000;
 const SERVER_HOSTNAME = 'testesdelifybr.ddns.net';
 const PASSWORD = "5eeb219ebc72cd90a4020538b28593fbfac63d2e0a8d6ccf6c28c21c97f00ea6";
 let SERVER_IP;
@@ -47,7 +56,12 @@ dns_1.default.lookup(SERVER_HOSTNAME, (err, address, family) => {
 });
 /// Functions
 function validateCrendential(credential) {
-    return credential.ip === SERVER_IP && credential.password === PASSWORD;
+    var b = credential.ip === SERVER_IP && credential.password === PASSWORD;
+    let response = {
+        sucess: b,
+        reason: b ? '' : 'Invalid Credentials'
+    };
+    return response;
 }
 function verifyArduinoInsertionRequest(request) {
     return __awaiter(this, void 0, void 0, function* () {
@@ -77,21 +91,22 @@ function pingSerial(serial) {
     return __awaiter(this, void 0, void 0, function* () {
         console.log('Pinging ' + serial.path + ' at ' + serial.baudRate);
         let parser = serial.pipe(new Readline({ delimiter: '\n' }));
+        let data;
         try {
-            let data = yield new Promise((onResult, onError) => {
+            data = (yield new Promise((onResult, onError) => {
                 parser.on('data', data => {
                     onResult(data);
                 });
                 setTimeout(() => serial.write('p'), 1000);
                 setTimeout(() => onError(), 1100); // VERIFY IF THE RETURN IS ACTUALLY 'p'
-            });
+            }));
         }
         catch (_a) {
             console.log('NOT Pong');
             return false;
         }
         console.log('Pong');
-        return true;
+        return data.charCodeAt(0) === 112;
     });
 }
 /// EXECUTION
@@ -102,15 +117,12 @@ app.listen(WEB_PORT, () => console.log(`Server started at http://localhost:${WEB
 app.post('/add', function (req, res) {
     return __awaiter(this, void 0, void 0, function* () {
         let credentials = { ip: req.ip.substring(req.ip.lastIndexOf(':') + 1), password: req.body.password };
-        let request = req.body;
-        if (!validateCrendential(credentials)) {
-            let response = {
-                sucess: false,
-                reason: 'Invalid Credentials'
-            };
+        let response = validateCrendential(credentials);
+        if (!response.sucess) {
             res.send(JSON.stringify(response));
             return;
         }
+        let request = req.body;
         let result = yield verifyArduinoInsertionRequest(request);
         if (!result.sucess) {
             res.send(JSON.stringify(result));
@@ -132,11 +144,28 @@ app.post('/add', function (req, res) {
         console.log(`Arduino ${request.arduinoName} was added.`);
         console.log("Arduinos:");
         arduinos.forEach((serial, arduino) => console.log(` Arduino: ${arduino}/Port = ${ard.Serial.path} | BaudRate= ${ard.Serial.baudRate}`));
-        ard.send('a');
         res.send(JSON.stringify({ sucess: true, reason: ard.ArduinoName + ' added successfully' }));
     });
 });
 app.post('/cmd', function (req, res) {
     return __awaiter(this, void 0, void 0, function* () {
+        let credentials = { ip: req.ip.substring(req.ip.lastIndexOf(':') + 1), password: req.body.password };
+        let response = validateCrendential(credentials);
+        if (!response.sucess) {
+            res.send(JSON.stringify(response));
+            return;
+        }
+        try {
+            let arduino;
+            arduinos.forEach((ard, name) => {
+                if (name == req.body.arduinoName) {
+                    arduino = ard;
+                    arduino.send(req.body.cmd);
+                }
+            });
+        }
+        catch (_a) {
+        }
+        res.end();
     });
 });
