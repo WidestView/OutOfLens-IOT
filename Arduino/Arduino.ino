@@ -22,8 +22,11 @@ void loop(){
                 delay(20);
                 digitalWrite(9,LOW);
             break;
-            case 'a':
-                Serial.println("Led ligada!");
+            case 'b':
+                digitalWrite(9,HIGH);
+                delay(20);
+                digitalWrite(9,LOW);
+                Serial.println("Buzzer apitou!");
             break;
         }
     }
