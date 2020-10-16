@@ -13,9 +13,9 @@ export class Arduino{
         this.ArduinoName = name;
         this.Serial = serial;
         this.Parser = this.Serial.pipe(new Readline({ delimiter : '\n' }));
-        this.Parser.on('data', data=>{
+        this.Parser.on('data',(data)=>{
             this.DataLog.push(data);
-            this.DataLog.map((value)=>{console.log(value);})
+            this.DataLog.every(console.log)
         });
     }
 
@@ -24,9 +24,14 @@ export class Arduino{
     }
     
     public read(){
-        return this.DataLog;
+        return this.DataLog[this.DataLog.length-1];
     }
-    public readAndClear(){
+
+    public clear(){
+        this.DataLog = [];
+    }
+
+    public readAllAndClear(){
         let result:string[];
         result = this.DataLog;
         this.DataLog = [];

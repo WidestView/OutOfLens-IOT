@@ -13,7 +13,6 @@ void setup(){
 
     //SERIAL DEFINITION
     Serial.begin(9600);
-    Serial.write('a');
 
     //Buzz for setup end
     digitalWrite(BUZZER,HIGH);
@@ -22,16 +21,16 @@ void setup(){
 }
 
 void loop(){
-    if (Serial.available()) { 
+    if (Serial.available()) {
         switch (Serial.read()) {
             case 'a':
-                Serial.print("a");
+                Serial.println("a");
             break;
             case 'b':
                  digitalWrite(BUZZER,HIGH);
                 delay(20);
                 digitalWrite(BUZZER,LOW);
-                Serial.print("b");
+                Serial.println("b");
             break;
         }
     }

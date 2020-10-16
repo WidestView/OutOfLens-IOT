@@ -7,12 +7,14 @@ const Readline = SerialPort.parsers.Readline;
 // Interfaces
 import {Interfaces} from './interfaces';
 import ArduinoInsertionRequest  = Interfaces.ArduinoInsertionRequest;
-import ArduinoInsertionResponse = Interfaces.ArduinoInsertionResponse;
+import ArduinoResponse          = Interfaces.ArduinoResponse;
+import ArduinoCommandRequest    = Interfaces.ArduinoCommandRequest;
 import Credential               = Interfaces.Credential;
 
 // Custom files
 import {Arduino} from './arduino';
 import {arduinos, PASSWORD} from './global';
+import { resolve } from 'path';
 
 // Arguments check
 
@@ -21,7 +23,6 @@ var ARGUMENTS = process.argv.slice(2); // Remove default node arguments
 
 var WEB_PORT = 8000;
 var ALLOWED_IPS : string[] = [];
-
 checkLineArguments(ARGUMENTS);
 
 function checkLineArguments(Arguments:string[]){
@@ -34,7 +35,6 @@ function checkLineArguments(Arguments:string[]){
         if(ARGUMENTS.length<2){
             throw new Error('Specify at least one allowed URL as an line argument!');
         }
-        console.log('!-- Allowed URLS: ');
         for(var i=1;i<ARGUMENTS.length;i++){
             dns.lookup(ARGUMENTS[i], (err, address, family) => {
                 if (err) {
@@ -43,12 +43,12 @@ function checkLineArguments(Arguments:string[]){
                 }
                 
                 ALLOWED_IPS.push(address);
+                console.log("ALLOWED_IP: "+address);
             });
-            console.log(ARGUMENTS[i]);
         }
-        console.log('! --')
+        
     }else{
-        for(var i=1;i<ARGUMENTS.length;i++){
+        for(var i=0;i<ARGUMENTS.length;i++){
             dns.lookup(ARGUMENTS[i], (err, address, family) => {
                 if (err) {
                     console.log(err);
@@ -56,6 +56,7 @@ function checkLineArguments(Arguments:string[]){
                 }
                 
                 ALLOWED_IPS.push(address);
+                console.log("ALLOWED_IP: "+address);
             });
         }
     }
@@ -64,11 +65,11 @@ function checkLineArguments(Arguments:string[]){
 /// Server Functions
 
 function validateCrendential(credential : Credential) {
-    var isAllowed = ALLOWED_IPS.some( ip => credential.ip === ip && credential.password);
+    var isAllowed = ALLOWED_IPS.some( ip => credential.ip === ip && credential.password === PASSWORD);
     let response = {
         sucess: isAllowed,
         reason: isAllowed? '':'Invalid Credentials'
-    } as ArduinoInsertionResponse;
+    } as ArduinoResponse;
     return response;
 }
 
@@ -98,32 +99,9 @@ async function verifyArduinoInsertionRequest(request : ArduinoInsertionRequest) 
     let response = {
         sucess: reasons.length == 0,
         reason: reasons.join('\n')
-    } as ArduinoInsertionResponse;
+    } as ArduinoResponse;
 
     return response;
-} 
-
-async function pingSerial(serial: SerialPort) : Promise<boolean> {
-    console.log('Pinging '+serial.path+' at '+serial.baudRate);
-
-    let parser = serial.pipe(new Readline({delimiter:'\n'}));
-    let data:string;
-    try{
-        data = await new Promise<string>((onResult, onError) => {
-            parser.on('data', data => {
-                onResult(data);
-            });
-            setTimeout(()=>serial.write('p'),1000);
-            setTimeout(()=>onError(),1100); // VERIFY IF THE RETURN IS ACTUALLY 'p'
-        }) as string;
-    }
-    catch{
-        console.log('NOT Pong');
-        return false;
-    }
-
-    console.log('Pong');
-    return data.charCodeAt(0) === 112;
 }
 
 /// EXECUTION
@@ -137,7 +115,6 @@ app.listen( WEB_PORT, () =>
     console.log( `Server started at http://localhost:${ WEB_PORT }`));
 
 app.post('/add', async function(req, res) {
-
     let credentials = { ip:req.ip.substring(req.ip.lastIndexOf(':')+1),password:req.body.password } as Credential;
     let response = validateCrendential(credentials);
     if (!response.sucess) {
@@ -155,12 +132,12 @@ app.post('/add', async function(req, res) {
     }
     
     let serial = new SerialPort(request.serialPort,{baudRate:Number(request.baudRate)});
-    
 
-    let isValid = await pingSerial(serial);
-    
-    if (!isValid) {
+    let ard = new Arduino(request.arduinoName,serial);
 
+    //CHECK IF IS AN VALID ARDUINO 
+/*
+    if(ard.read()!='a'){
         let response = {
             sucess: false,
             reason:'This port is not an Arduino valid'
@@ -168,20 +145,18 @@ app.post('/add', async function(req, res) {
 
         res.send(JSON.stringify(response));
 
-        serial.close();
+        ard.Serial.close();
 
         return;
     }
-
-    let ard = new Arduino(request.arduinoName,serial);
-    
-    arduinos.set(request.arduinoName, ard);
+*/
+    arduinos.set(ard.ArduinoName,ard);
 
     console.log(`Arduino ${request.arduinoName} was added.`);
     console.log("Arduinos:");
     arduinos.forEach((serial, arduino) =>
         console.log(` Arduino: ${arduino}/Port = ${ard.Serial.path} | BaudRate= ${ard.Serial.baudRate}`));
-    res.send(JSON.stringify({sucess : true,reason  : ard.ArduinoName+ ' added successfully'} as ArduinoInsertionResponse));
+    res.send(JSON.stringify({sucess : true,reason  : ard.ArduinoName+ ' added successfully'} as ArduinoResponse));
 });
 
 
@@ -192,17 +167,23 @@ app.post('/cmd', async function(req, res) {
         res.send(JSON.stringify(response));
         return;
     }
-    try{
-        let arduino:Arduino;
-        arduinos.forEach( (ard,name)=> {
-            if(name == req.body.arduinoName){
-                arduino = ard;
-                arduino.send(req.body.cmd);
-            }
-        });
+
+    let request = req.body as ArduinoCommandRequest;
+    let ard = arduinos.get(request.arduinoName);
+    if(ard==null){
+        let response = {
+            sucess: false,
+            reason: 'There is no arduino called '+request.arduinoName
+        } as ArduinoResponse;
+        res.send(response);
+        return;
     }
-    catch{
-    }
-    res.end();
+    ard.send(request.cmd);
+    response = {
+        sucess: true,
+        reason: request.cmd+' executed sucefully!'
+    } as ArduinoResponse;
+    res.send(response);
+    return;
 });
 
