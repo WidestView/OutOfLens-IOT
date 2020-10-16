@@ -1,80 +1,74 @@
-
 import dns        from 'dns';
 import SerialPort from 'serialport';
 import express    from 'express';
 import bodyParser from 'body-parser';
 const Readline = SerialPort.parsers.Readline;
 
+// Interfaces
 import {Interfaces} from './interfaces';
 import ArduinoInsertionRequest  = Interfaces.ArduinoInsertionRequest;
 import ArduinoInsertionResponse = Interfaces.ArduinoInsertionResponse;
 import Credential               = Interfaces.Credential;
-import { parse } from 'path';
-import { ReadLine } from 'readline';
 
-class Arduino{
-    public ArduinoName:string;
-    public Serial:SerialPort;
-    public Parser:SerialPort.parsers.Readline;
+// Custom files
+import {Arduino} from './arduino';
+import {arduinos, PASSWORD} from './global';
 
-    public DataLog:string[] = [];
+// Arguments check
 
-    constructor(name:string,serial:SerialPort){
-        this.ArduinoName = name;
-        this.Serial = serial;
-        this.Parser = this.Serial.pipe(new Readline({ delimiter : '\n' }));
-        this.Parser.on('data', data=>{
-            this.DataLog.push(data);
-            this.DataLog.map((value)=>{console.log(value);})
-        });
-    }
+    /*! LINE ARGUMENTS SHOULD SPECIFY AT LEAST ONE URL FROM ALLOWED APIS, just like: beserrovsky.ddns.net !*/
+var ARGUMENTS = process.argv.slice(2); // Remove default node arguments
 
-    public send(value : string) {
-        this.Serial.write(value);
+var WEB_PORT = 8000;
+var ALLOWED_IPS : string[] = [];
+
+checkLineArguments(ARGUMENTS);
+
+function checkLineArguments(Arguments:string[]){
+    if(ARGUMENTS.length<1){
+        throw Error('Specify at least one allowed URL as an line argument!');
     }
     
-    public read(){
-        return this.DataLog;
-    }
-    public readAndClear(){
-        let result:string[];
-        result = this.DataLog;
-        this.DataLog = [];
-        return result;
+    if(!isNaN(Number(ARGUMENTS[0]))){ // check if the first argument is JUST a valid port
+        WEB_PORT = Number(ARGUMENTS[0]);
+        if(ARGUMENTS.length<2){
+            throw new Error('Specify at least one allowed URL as an line argument!');
+        }
+        console.log('!-- Allowed URLS: ');
+        for(var i=1;i<ARGUMENTS.length;i++){
+            dns.lookup(ARGUMENTS[i], (err, address, family) => {
+                if (err) {
+                    console.log(err);
+                    return;
+                }
+                
+                ALLOWED_IPS.push(address);
+            });
+            console.log(ARGUMENTS[i]);
+        }
+        console.log('! --')
+    }else{
+        for(var i=1;i<ARGUMENTS.length;i++){
+            dns.lookup(ARGUMENTS[i], (err, address, family) => {
+                if (err) {
+                    console.log(err);
+                    return;
+                }
+                
+                ALLOWED_IPS.push(address);
+            });
+        }
     }
 }
 
-
-/// Globals
-
-const arduinos = new Map<string, Arduino>();
-
-const WEB_PORT        = 8000;
-const SERVER_HOSTNAME = 'testesdelifybr.ddns.net';
-const PASSWORD        = "5eeb219ebc72cd90a4020538b28593fbfac63d2e0a8d6ccf6c28c21c97f00ea6";
-
-
-let SERVER_IP:string;
-
-dns.lookup(SERVER_HOSTNAME, (err, address, family) => {
-
-    if (err) {
-        console.log(err);
-        return;
-    }
-
-    SERVER_IP = address;
-});
-
-/// Functions
+/// Server Functions
 
 function validateCrendential(credential : Credential) {
-    var b = credential.ip === SERVER_IP && credential.password === PASSWORD;
+    var isAllowed = ALLOWED_IPS.some( ip => credential.ip === ip && credential.password);
     let response = {
-        sucess: b,
-        reason: b? '':'Invalid Credentials'
+        sucess: isAllowed,
+        reason: isAllowed? '':'Invalid Credentials'
     } as ArduinoInsertionResponse;
-
     return response;
 }
 
