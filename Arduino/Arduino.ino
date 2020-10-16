@@ -1,4 +1,3 @@
-
 //    ______         
 //   / ____/__    __ 
 //  / /  __/ /___/ /_
@@ -6,27 +5,33 @@
 // \____//_/   /_/   
 //                   
 
+#define BUZZER 9
 
-//Arduino serial stuff, customize to your needs
 void setup(){
-    Serial.begin(9600);
+    //PIN DEFINITION
     pinMode(9,OUTPUT);
+
+    //SERIAL DEFINITION
+    Serial.begin(9600);
+    Serial.write('a');
+
+    //Buzz for setup end
+    digitalWrite(BUZZER,HIGH);
+    delay(20);
+    digitalWrite(BUZZER,LOW);
 }
 
 void loop(){
     if (Serial.available()) { 
         switch (Serial.read()) {
-            case 'p':
-                Serial.println("p");
-                digitalWrite(9,HIGH);
-                delay(20);
-                digitalWrite(9,LOW);
+            case 'a':
+                Serial.print("a");
             break;
             case 'b':
-                digitalWrite(9,HIGH);
+                 digitalWrite(BUZZER,HIGH);
                 delay(20);
-                digitalWrite(9,LOW);
-                Serial.println("Buzzer apitou!");
+                digitalWrite(BUZZER,LOW);
+                Serial.print("b");
             break;
         }
     }
