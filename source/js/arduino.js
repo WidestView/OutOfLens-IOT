@@ -14,7 +14,7 @@ class Arduino {
         this.Parser = this.Serial.pipe(new Readline({ delimiter: '\n' }));
         this.Parser.on('data', (data) => {
             this.DataLog.push(data);
-            this.DataLog.every((data) => { console.log; });
+            this.DataLog.every((log) => console.log(log));
         });
     }
     send(value) {
