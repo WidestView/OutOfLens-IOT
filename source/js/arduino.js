@@ -12,18 +12,21 @@ class Arduino {
         this.ArduinoName = name;
         this.Serial = serial;
         this.Parser = this.Serial.pipe(new Readline({ delimiter: '\n' }));
-        this.Parser.on('data', data => {
+        this.Parser.on('data', (data) => {
             this.DataLog.push(data);
-            this.DataLog.map((value) => { console.log(value); });
+            this.DataLog.every((data) => { console.log; });
         });
     }
     send(value) {
         this.Serial.write(value);
     }
     read() {
-        return this.DataLog;
+        return this.DataLog[this.DataLog.length - 1];
     }
-    readAndClear() {
+    clear() {
+        this.DataLog = [];
+    }
+    readAllAndClear() {
         let result;
         result = this.DataLog;
         this.DataLog = [];

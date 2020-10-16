@@ -35,7 +35,6 @@ function checkLineArguments(Arguments) {
         if (ARGUMENTS.length < 2) {
             throw new Error('Specify at least one allowed URL as an line argument!');
         }
-        console.log('!-- Allowed URLS: ');
         for (var i = 1; i < ARGUMENTS.length; i++) {
             dns_1.default.lookup(ARGUMENTS[i], (err, address, family) => {
                 if (err) {
@@ -43,26 +42,26 @@ function checkLineArguments(Arguments) {
                     return;
                 }
                 ALLOWED_IPS.push(address);
+                console.log("ALLOWED_IP: " + address);
             });
-            console.log(ARGUMENTS[i]);
         }
-        console.log('! --');
     }
     else {
-        for (var i = 1; i < ARGUMENTS.length; i++) {
+        for (var i = 0; i < ARGUMENTS.length; i++) {
             dns_1.default.lookup(ARGUMENTS[i], (err, address, family) => {
                 if (err) {
                     console.log(err);
                     return;
                 }
                 ALLOWED_IPS.push(address);
+                console.log("ALLOWED_IP: " + address);
             });
         }
     }
 }
 /// Server Functions
 function validateCrendential(credential) {
-    var isAllowed = ALLOWED_IPS.some(ip => credential.ip === ip && credential.password);
+    var isAllowed = ALLOWED_IPS.some(ip => credential.ip === ip && credential.password === global_1.PASSWORD);
     let response = {
         sucess: isAllowed,
         reason: isAllowed ? '' : 'Invalid Credentials'
@@ -93,28 +92,6 @@ function verifyArduinoInsertionRequest(request) {
         return response;
     });
 }
-function pingSerial(serial) {
-    return __awaiter(this, void 0, void 0, function* () {
-        console.log('Pinging ' + serial.path + ' at ' + serial.baudRate);
-        let parser = serial.pipe(new Readline({ delimiter: '\n' }));
-        let data;
-        try {
-            data = (yield new Promise((onResult, onError) => {
-                parser.on('data', data => {
-                    onResult(data);
-                });
-                setTimeout(() => serial.write('p'), 1000);
-                setTimeout(() => onError(), 1100); // VERIFY IF THE RETURN IS ACTUALLY 'p'
-            }));
-        }
-        catch (_a) {
-            console.log('NOT Pong');
-            return false;
-        }
-        console.log('Pong');
-        return data.charCodeAt(0) === 112;
-    });
-}
 /// EXECUTION
 const app = express_1.default();
 app.use(body_parser_1.default.urlencoded());
@@ -135,18 +112,23 @@ app.post('/add', function (req, res) {
             return;
         }
         let serial = new serialport_1.default(request.serialPort, { baudRate: Number(request.baudRate) });
-        let isValid = yield pingSerial(serial);
-        if (!isValid) {
-            let response = {
-                sucess: false,
-                reason: 'This port is not an Arduino valid'
-            };
-            res.send(JSON.stringify(response));
-            serial.close();
-            return;
-        }
         let ard = new arduino_1.Arduino(request.arduinoName, serial);
-        global_1.arduinos.set(request.arduinoName, ard);
+        //CHECK IF IS AN VALID ARDUINO 
+        /*
+            if(ard.read()!='a'){
+                let response = {
+                    sucess: false,
+                    reason:'This port is not an Arduino valid'
+                } as ArduinoInsertionResponse;
+        
+                res.send(JSON.stringify(response));
+        
+                ard.Serial.close();
+        
+                return;
+            }
+        */
+        global_1.arduinos.set(ard.ArduinoName, ard);
         console.log(`Arduino ${request.arduinoName} was added.`);
         console.log("Arduinos:");
         global_1.arduinos.forEach((serial, arduino) => console.log(` Arduino: ${arduino}/Port = ${ard.Serial.path} | BaudRate= ${ard.Serial.baudRate}`));
@@ -161,17 +143,22 @@ app.post('/cmd', function (req, res) {
             res.send(JSON.stringify(response));
             return;
         }
-        try {
-            let arduino;
-            global_1.arduinos.forEach((ard, name) => {
-                if (name == req.body.arduinoName) {
-                    arduino = ard;
-                    arduino.send(req.body.cmd);
-                }
-            });
+        let request = req.body;
+        let ard = global_1.arduinos.get(request.arduinoName);
+        if (ard == null) {
+            let response = {
+                sucess: false,
+                reason: 'There is no arduino called ' + request.arduinoName
+            };
+            res.send(response);
+            return;
         }
-        catch (_a) {
-        }
-        res.end();
+        ard.send(request.cmd);
+        response = {
+            sucess: true,
+            reason: request.cmd + ' executed sucefully!'
+        };
+        res.send(response);
+        return;
     });
 });
