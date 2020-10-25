@@ -51,7 +51,7 @@ export class Arduino{
         let parser = this.Parser;
         let name = this.ArduinoName;
         return new Promise(function(resolve, reject) { 
-            port.write(command+'\n', function () {
+            port.write(command, function () {
               console.log(name+' send: '+command);
               parser.on('data', (data) => { 
                   console.log(name+' answered: '+data.charAt(0));
