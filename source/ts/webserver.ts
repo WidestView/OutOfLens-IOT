@@ -19,6 +19,7 @@ import { resolve } from 'path';
 // Arguments check
 
     /*! LINE ARGUMENTS SHOULD SPECIFY AT LEAST ONE URL FROM ALLOWED APIS, just like: beserrovsky.ddns.net !*/
+
 var ARGUMENTS = process.argv.slice(2); // Remove default node arguments
 
 var WEB_PORT = 8000;
@@ -135,13 +136,11 @@ app.post('/add', async function(req, res) {
 
     let ard = new Arduino(request.arduinoName,serial);
 
-    //CHECK IF IS AN VALID ARDUINO 
-/*
-    if(ard.read()!='a'){
+    if(!await ard.ping()){
         let response = {
             sucess: false,
             reason:'This port is not an Arduino valid'
-        } as ArduinoInsertionResponse;
+        } as ArduinoResponse;
 
         res.send(JSON.stringify(response));
 
@@ -149,7 +148,6 @@ app.post('/add', async function(req, res) {
 
         return;
     }
-*/
     arduinos.set(ard.ArduinoName,ard);
 
     console.log(`Arduino ${request.arduinoName} was added.`);
@@ -178,12 +176,21 @@ app.post('/cmd', async function(req, res) {
         res.send(response);
         return;
     }
-    ard.send(request.cmd);
+
+    if(!await ard.send(request.cmd)){
+        let response = {
+            sucess: false,
+            reason: request.cmd+' not solved!'
+        } as ArduinoResponse;
+        res.send(response);
+        return;
+    }
+
     response = {
         sucess: true,
         reason: request.cmd+' executed sucefully!'
     } as ArduinoResponse;
+    
     res.send(response);
     return;
 });
-
