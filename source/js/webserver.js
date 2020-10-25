@@ -113,21 +113,15 @@ app.post('/add', function (req, res) {
         }
         let serial = new serialport_1.default(request.serialPort, { baudRate: Number(request.baudRate) });
         let ard = new arduino_1.Arduino(request.arduinoName, serial);
-        //CHECK IF IS AN VALID ARDUINO 
-        /*
-            if(ard.read()!='a'){
-                let response = {
-                    sucess: false,
-                    reason:'This port is not an Arduino valid'
-                } as ArduinoInsertionResponse;
-        
-                res.send(JSON.stringify(response));
-        
-                ard.Serial.close();
-        
-                return;
-            }
-        */
+        if (!(yield ard.ping())) {
+            let response = {
+                sucess: false,
+                reason: 'This port is not an Arduino valid'
+            };
+            res.send(JSON.stringify(response));
+            ard.Serial.close();
+            return;
+        }
         global_1.arduinos.set(ard.ArduinoName, ard);
         console.log(`Arduino ${request.arduinoName} was added.`);
         console.log("Arduinos:");
@@ -153,7 +147,14 @@ app.post('/cmd', function (req, res) {
             res.send(response);
             return;
         }
-        ard.send(request.cmd);
+        if (!(yield ard.send(request.cmd))) {
+            let response = {
+                sucess: false,
+                reason: request.cmd + ' not solved!'
+            };
+            res.send(response);
+            return;
+        }
         response = {
             sucess: true,
             reason: request.cmd + ' executed sucefully!'

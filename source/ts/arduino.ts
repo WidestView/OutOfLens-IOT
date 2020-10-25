@@ -1,40 +1,64 @@
+import { resolve } from 'dns';
+import { read } from 'fs';
+import { prototype } from 'module';
 import SerialPort from 'serialport';
 
 const Readline = SerialPort.parsers.Readline;
 
 export class Arduino{
     public ArduinoName:string;
-    public Serial:SerialPort;
-    public Parser:SerialPort.parsers.Readline;
 
-    public DataLog:string[] = [];
+    public SerialPort = require('serialport')
+
+    public Serial:SerialPort;
+    private Parser:SerialPort.parsers.Readline;
+
+
+    //private DataLog:string[] = [];
+
 
     constructor(name:string,serial:SerialPort){
         this.ArduinoName = name;
         this.Serial = serial;
         this.Parser = this.Serial.pipe(new Readline({ delimiter : '\n' }));
-        this.Parser.on('data',(data)=>{
-            this.DataLog.push(data);
-            this.DataLog.every((log)=>console.log(log));
-        });
     }
 
-    public send(value : string) {
-        this.Serial.write(value);
-    }
-    
-    public read(){
-        return this.DataLog[this.DataLog.length-1];
+    public async ping(){
+        let port = this.Serial;
+        let parser = this.Parser;
+        let name = this.ArduinoName;
+        return new Promise(function(resolve, reject) { 
+            console.log(name+' pinged');
+            let done = false;
+            parser.on('data', (data) => { 
+                done = true;
+                console.log(name+ ' pong');
+                parser.removeAllListeners();
+                resolve(data.charAt(0) == 's')
+            })
+            setTimeout(() => {
+                if(!done){
+                    console.log(name+ ' timed out');
+                    parser.removeAllListeners();
+                    resolve(false);
+                }
+            }, 2000);
+          });  
     }
 
-    public clear(){
-        this.DataLog = [];
-    }
-
-    public readAllAndClear(){
-        let result:string[];
-        result = this.DataLog;
-        this.DataLog = [];
-        return result;
+    public send(command:string){
+        let port = this.Serial;
+        let parser = this.Parser;
+        let name = this.ArduinoName;
+        return new Promise(function(resolve, reject) { 
+            port.write(command+'\n', function () {
+              console.log(name+' send: '+command);
+              parser.on('data', (data) => { 
+                  console.log(name+' answered: '+data.charAt(0));
+                  parser.removeAllListeners();
+                  resolve(data.charAt(0) == 'a');
+              })
+            })
+          }); 
     }
 }
