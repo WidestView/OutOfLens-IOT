@@ -16,6 +16,7 @@ const dns_1 = __importDefault(require("dns"));
 const serialport_1 = __importDefault(require("serialport"));
 const express_1 = __importDefault(require("express"));
 const body_parser_1 = __importDefault(require("body-parser"));
+const crypto_js_1 = __importDefault(require("crypto-js"));
 const Readline = serialport_1.default.parsers.Readline;
 // Custom files
 const arduino_1 = require("./arduino");
@@ -89,6 +90,17 @@ function readLineArguments(args) {
     }
 }
 /// Server Functions
+function decrypt(data) {
+    const result = crypto_js_1.default.AES.decrypt(data, global_1.DECKEY);
+    return result.toString(crypto_js_1.default.enc.Utf8);
+}
+function encrypt(data) {
+    const result = crypto_js_1.default.AES.encrypt(data, global_1.DECKEY).toString();
+    return result;
+}
+function hash(data) {
+    return crypto_js_1.default.SHA256(data).toString();
+}
 function validateCrendential(credential) {
     const isAllowed = ALLOWED_IPS.some(ip => credential.ip === ip && credential.password === global_1.PASSWORD);
     let response = {
@@ -134,24 +146,40 @@ app.use(body_parser_1.default.json());
 app.listen(WEB_PORT, () => console.log(`Server started at http://localhost:${WEB_PORT}`));
 app.post('/cmd', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     //CHECK CREDENTIALS
-    let credentials = { ip: req.ip.substring(req.ip.lastIndexOf(':') + 1), password: req.body.password };
+    let credentials = { ip: req.ip.substring(req.ip.lastIndexOf(':') + 1), password: decrypt(req.body.password) };
+    if (credentials.password === "") {
+        let response = {
+            sucess: false,
+            reason: encrypt('Password could not be decrypted!')
+        };
+        res.send(response);
+        return;
+    }
     let response = validateCrendential(credentials);
     if (!response.sucess) {
         res.send(JSON.stringify(response));
         return;
     }
-    let request = req.body;
+    let request = { cmd: decrypt(req.body.cmd) };
+    if (request.cmd === "") {
+        let response = {
+            sucess: false,
+            reason: encrypt('Command could not be decrypted!')
+        };
+        res.send(response);
+        return;
+    }
     if (!(yield arduino.send(request.cmd))) {
         let response = {
             sucess: false,
-            reason: request.cmd + ' not solved!'
+            reason: encrypt(request.cmd + ' not solved!')
         };
         res.send(response);
         return;
     }
     response = {
         sucess: true,
-        reason: request.cmd + ' executed sucefully!'
+        reason: encrypt(request.cmd + ' executed sucefully!')
     };
     res.send(response);
     return;

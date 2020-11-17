@@ -9,11 +9,14 @@ export class Arduino{
     private localParser: SerialPort.parsers.Readline;
     private serverParser: SerialPort.parsers.Readline;
 
-    constructor(serial:SerialPort){
+    private ApiUrl: string;
+
+    constructor(serial:SerialPort, url:string){
         this.Serial = serial;
         this.localParser = this.Serial.pipe(new Readline({ delimiter : '\n' }));
         this.serverParser = this.Serial.pipe(new Readline({ delimiter : '\n' }));
         this.serverParser.on('data', (data) => this.register(data));
+        this.ApiUrl = url;
     }
 
     public async ping(){

@@ -2,6 +2,7 @@ import dns        from 'dns';
 import SerialPort from 'serialport';
 import express    from 'express';
 import bodyParser from 'body-parser';
+import cryptoJs   from 'crypto-js';
 
 const Readline = SerialPort.parsers.Readline;
 
@@ -13,8 +14,7 @@ import Credential               = Interfaces.Credential;
 
 // Custom files
 import { Arduino } from './arduino';
-import { PASSWORD } from './global';
-import { resolve } from 'path';
+import { PASSWORD, DECKEY } from './global';
 
 const defaultBaudRate = 9600;
 
@@ -27,6 +27,7 @@ const ARGUMENTS = process.argv.slice(2); // Remove default node arguments
 let WEB_PORT = 8000;
 let ALLOWED_IPS : string[] = [];
 let ARDUINO_PORT_PATH: string = '';
+let SERVER_API_URL: string = '';
 
 readLineArguments(ARGUMENTS);
 
@@ -87,6 +88,24 @@ function readLineArguments(args:string[]){
             throw Error('Specify a serial port for your \'--arduino\' argument!');
         }
 
+        SERVER_API_URL = args[args.indexOf('--api') + 1]
+        
+    }else{
+        throw Error('Specify one api as line arguments, use \'--api\'!');
+    }
+
+    // API (--api)
+
+    if(args.indexOf('--api') > -1){
+
+        if(args.indexOf('--api') !== args.lastIndexOf('--api')){
+            throw Error('Specify only one api!');
+        }
+
+        if(args.length <= args.indexOf('--api') + 1){
+            throw Error('Specify an api for your \'--api\' argument!');
+        }
+
         ARDUINO_PORT_PATH = args[args.indexOf('--arduino') + 1]
         
     }else{
@@ -114,9 +133,21 @@ function readLineArguments(args:string[]){
 
 }
 
-
-
 /// Server Functions
+
+function decrypt(data: string){
+    const result = cryptoJs.AES.decrypt(data, DECKEY);
+    return result.toString(cryptoJs.enc.Utf8);
+}
+
+function encrypt(data: string){
+    const result = cryptoJs.AES.encrypt(data, DECKEY).toString()
+    return result;
+}
+
+function hash(data: string){
+    return cryptoJs.SHA256(data).toString();
+}
 
 function validateCrendential(credential : Credential) {
     const isAllowed = ALLOWED_IPS.some( ip => credential.ip === ip && credential.password === PASSWORD);
@@ -144,7 +175,7 @@ async function createArduino(portPath: string){
             reject('No port matches ' + portPath);
         }
 
-        let arduino = new Arduino(new SerialPort(portPath, {baudRate: defaultBaudRate}));
+        let arduino = new Arduino(new SerialPort(portPath, {baudRate: defaultBaudRate}), SERVER_API_URL);
 
         if(await arduino.ping()){
 
@@ -190,19 +221,38 @@ app.post('/cmd', async (req, res)=>{
 
     //CHECK CREDENTIALS
 
-    let credentials = { ip:req.ip.substring(req.ip.lastIndexOf(':')+1),password:req.body.password } as Credential;
+    let credentials = { ip:req.ip.substring(req.ip.lastIndexOf(':')+1),password:decrypt(req.body.password) } as Credential;
+
+    if(credentials.password === ""){
+        let response = {
+            sucess: false,
+            reason: encrypt('Password could not be decrypted!')
+        } as ArduinoResponse;
+        res.send(response);
+        return;
+    }
+
     let response = validateCrendential(credentials);
     if (!response.sucess) {
         res.send(JSON.stringify(response));
         return;
     }
 
-    let request = req.body as ArduinoCommandRequest;
+    let request = {cmd: decrypt(req.body.cmd)} as ArduinoCommandRequest;
+
+    if(request.cmd === ""){
+        let response = {
+            sucess: false,
+            reason: encrypt('Command could not be decrypted!')
+        } as ArduinoResponse;
+        res.send(response);
+        return;
+    }
 
     if(!await arduino.send(request.cmd)){
         let response = {
             sucess: false,
-            reason: request.cmd + ' not solved!'
+            reason: encrypt(request.cmd + ' not solved!')
         } as ArduinoResponse;
         res.send(response);
         return;
@@ -210,7 +260,7 @@ app.post('/cmd', async (req, res)=>{
 
     response = {
         sucess: true,
-        reason: request.cmd + ' executed sucefully!'
+        reason: encrypt(request.cmd + ' executed sucefully!')
     } as ArduinoResponse;
     
     res.send(response);
