@@ -2,71 +2,124 @@ import dns        from 'dns';
 import SerialPort from 'serialport';
 import express    from 'express';
 import bodyParser from 'body-parser';
+
 const Readline = SerialPort.parsers.Readline;
 
 // Interfaces
-import {Interfaces} from './interfaces';
-import ArduinoInsertionRequest  = Interfaces.ArduinoInsertionRequest;
+import { Interfaces } from './interfaces';
 import ArduinoResponse          = Interfaces.ArduinoResponse;
 import ArduinoCommandRequest    = Interfaces.ArduinoCommandRequest;
 import Credential               = Interfaces.Credential;
 
 // Custom files
-import {Arduino} from './arduino';
-import {arduinos, PASSWORD} from './global';
+import { Arduino } from './arduino';
+import { PASSWORD } from './global';
 import { resolve } from 'path';
 
-// Arguments check
+const defaultBaudRate = 9600;
 
-    /*! LINE ARGUMENTS SHOULD SPECIFY AT LEAST ONE URL FROM ALLOWED APIS, just like: beserrovsky.ddns.net !*/
-
-var ARGUMENTS = process.argv.slice(2); // Remove default node arguments
-
-var WEB_PORT = 8000;
-var ALLOWED_IPS : string[] = [];
-checkLineArguments(ARGUMENTS);
-
-function checkLineArguments(Arguments:string[]){
-    if(ARGUMENTS.length<1){
-        throw Error('Specify at least one allowed URL as an line argument!');
-    }
+// Arguments reading
     
-    if(!isNaN(Number(ARGUMENTS[0]))){ // check if the first argument is JUST a valid port
-        WEB_PORT = Number(ARGUMENTS[0]);
-        if(ARGUMENTS.length<2){
-            throw new Error('Specify at least one allowed URL as an line argument!');
+        /*! LINE ARGUMENTS SHOULD SPECIFY AT LEAST ONE URL FROM ALLOWED APIS AND ONE ARDUINO PORT!*/
+
+const ARGUMENTS = process.argv.slice(2); // Remove default node arguments
+
+let WEB_PORT = 8000;
+let ALLOWED_IPS : string[] = [];
+let ARDUINO_PORT_PATH: string = '';
+
+readLineArguments(ARGUMENTS);
+
+function readLineArguments(args:string[]){
+
+    // ALLOWED IPS (--allow)
+
+    if(args.indexOf('--allow') > -1){
+
+        if(args.indexOf('--allow') !== args.lastIndexOf('--allow')){
+            throw Error('Specify only one series of allowed servers!');
         }
-        for(var i=1;i<ARGUMENTS.length;i++){
-            dns.lookup(ARGUMENTS[i], (err, address, family) => {
-                if (err) {
-                    console.log(err);
-                    return;
+
+        let index = args.indexOf('--allow') + 1;
+        let stop = false;
+
+        while(!stop){
+
+            if(args.length <= index){
+                stop = true;
+            }
+            else{
+
+                if(args[index].charAt(0) == '-'){
+                    stop = true;
                 }
+
+            }
+
+            if(!stop){
+                dns.lookup(args[index], (err, address, family) => {
+                    if (err) {
+                        console.log(err);
+                        return;
+                    }
+
+                    ALLOWED_IPS.push(address);
+                    console.log("ALLOWED_IP: "+address);
+                });
                 
-                ALLOWED_IPS.push(address);
-                console.log("ALLOWED_IP: "+address);
-            });
+                index++;
+            }
         }
+
+    }else{
+        throw Error('Specify at least one allowed URL as line arguments, use \'--allow\'!');
+    }
+
+    // ARDUINO (--arduino)
+
+    if(args.indexOf('--arduino') > -1){
+
+        if(args.indexOf('--arduino') !== args.lastIndexOf('--arduino')){
+            throw Error('Specify only one arduino!');
+        }
+
+        if(args.length <= args.indexOf('--arduino') + 1){
+            throw Error('Specify a serial port for your \'--arduino\' argument!');
+        }
+
+        ARDUINO_PORT_PATH = args[args.indexOf('--arduino') + 1]
         
     }else{
-        for(var i=0;i<ARGUMENTS.length;i++){
-            dns.lookup(ARGUMENTS[i], (err, address, family) => {
-                if (err) {
-                    console.log(err);
-                    return;
-                }
-                
-                ALLOWED_IPS.push(address);
-                console.log("ALLOWED_IP: "+address);
-            });
-        }
+        throw Error('Specify one arduino as line arguments, use \'--arduino\'!');
     }
+
+    // CUSTOM WEB PORT ARGUMENT (--port)
+
+    if(args.indexOf('--port') > -1){
+
+        if(args.indexOf('--port') !== args.lastIndexOf('--port')){
+            throw Error('Specify only one web port as line argument!');
+        }
+
+        if(args.length <= args.indexOf('--port') + 1){
+            throw Error('Specify a web port for your \'--port\' argument!');
+        }
+
+        if(isNaN(Number(args[args.indexOf('--port') + 1]))){
+            throw Error('Specify a valid web port for your \'--port\' argument!');
+        }
+
+        WEB_PORT = Number(args[args.indexOf('--port') + 1]);
+    }
+
 }
+
+
 
 /// Server Functions
 
 function validateCrendential(credential : Credential) {
-    var isAllowed = ALLOWED_IPS.some( ip => credential.ip === ip && credential.password === PASSWORD);
+    const isAllowed = ALLOWED_IPS.some( ip => credential.ip === ip && credential.password === PASSWORD);
     let response = {
         sucess: isAllowed,
         reason: isAllowed? '':'Invalid Credentials'
@@ -74,38 +127,55 @@ function validateCrendential(credential : Credential) {
     return response;
 }
 
-async function verifyArduinoInsertionRequest(request : ArduinoInsertionRequest) {
-    console.log(`Request recieved for opening ${request.serialPort} at ${request.baudRate} as ${request.arduinoName}`);
-    let reasons : string[] = []
 
-    arduinos.forEach((ard, name) =>{
 
-        if(request.arduinoName === name){
-            reasons.push(`That is already an arduino called '${name}'`);
+/// Arduino Functions
+
+async function createArduino(portPath: string){
+    return new Promise<Arduino>(async (resolve, reject) => {
+
+        let ports = await SerialPort.list();
+
+        let result = ports.some(port => port.path === portPath);
+
+        if (!result) {
+            console.log('Ports connected to pc: ');
+            ports.forEach((port)=>console.log(port.path));
+            reject('No port matches ' + portPath);
         }
 
-        if(request.serialPort === ard.Serial.path){
-            reasons.push("This port is already used by: "+ard.ArduinoName+", try other");
+        let arduino = new Arduino(new SerialPort(portPath, {baudRate: defaultBaudRate}));
+
+        if(await arduino.ping()){
+
+            resolve(arduino);
         }
+        else{
+
+            reject('Arduino did not answered ping');
+        }
+
     });
-
-    let ports = await SerialPort.list();
-
-    let result = ports.some(port => port.path === request.serialPort);
-
-    if (!result) {
-        reasons.push('There is no port that matches the given one');
-    }
-
-    let response = {
-        sucess: reasons.length == 0,
-        reason: reasons.join('\n')
-    } as ArduinoResponse;
-
-    return response;
 }
 
-/// EXECUTION
+
+
+// Arduino Creation 
+
+if(ARDUINO_PORT_PATH == ''){
+    throw new Error('Something gone wrong and the server tried to start whitout an Serial Port Path for the Arduino');
+}
+
+let arduino: Arduino;
+
+const startArduino = async () => {
+    arduino = await createArduino(ARDUINO_PORT_PATH); 
+};
+
+startArduino();
+
+
+/// This Side Webserver
 
 const app = express();
 
@@ -113,52 +183,13 @@ app.use(bodyParser.urlencoded());
 app.use(bodyParser.json());
 
 app.listen( WEB_PORT, () => 
-    console.log( `Server started at http://localhost:${ WEB_PORT }`));
+    console.log( `Server started at http://localhost:${ WEB_PORT }`)
+);
 
-app.post('/add', async function(req, res) {
-    let credentials = { ip:req.ip.substring(req.ip.lastIndexOf(':')+1),password:req.body.password } as Credential;
-    let response = validateCrendential(credentials);
-    if (!response.sucess) {
-        res.send(JSON.stringify(response));
-        return;
-    }
+app.post('/cmd', async (req, res)=>{
 
-    let request = req.body as ArduinoInsertionRequest;
+    //CHECK CREDENTIALS
 
-    let result = await verifyArduinoInsertionRequest(request);
-
-    if (!result.sucess) {
-        res.send(JSON.stringify(result));
-        return;
-    }
-    
-    let serial = new SerialPort(request.serialPort,{baudRate:Number(request.baudRate)});
-
-    let ard = new Arduino(request.arduinoName,serial);
-
-    if(!await ard.ping()){
-        let response = {
-            sucess: false,
-            reason:'This port is not an Arduino valid'
-        } as ArduinoResponse;
-
-        res.send(JSON.stringify(response));
-
-        ard.Serial.close();
-
-        return;
-    }
-    arduinos.set(ard.ArduinoName,ard);
-
-    console.log(`Arduino ${request.arduinoName} was added.`);
-    console.log("Arduinos:");
-    arduinos.forEach((serial, arduino) =>
-        console.log(` Arduino: ${arduino}/Port = ${ard.Serial.path} | BaudRate= ${ard.Serial.baudRate}`));
-    res.send(JSON.stringify({sucess : true,reason  : ard.ArduinoName+ ' added successfully'} as ArduinoResponse));
-});
-
-
-app.post('/cmd', async function(req, res) {
     let credentials = { ip:req.ip.substring(req.ip.lastIndexOf(':')+1),password:req.body.password } as Credential;
     let response = validateCrendential(credentials);
     if (!response.sucess) {
@@ -167,20 +198,11 @@ app.post('/cmd', async function(req, res) {
     }
 
     let request = req.body as ArduinoCommandRequest;
-    let ard = arduinos.get(request.arduinoName);
-    if(ard==null){
-        let response = {
-            sucess: false,
-            reason: 'There is no arduino called '+request.arduinoName
-        } as ArduinoResponse;
-        res.send(response);
-        return;
-    }
 
-    if(!await ard.send(request.cmd)){
+    if(!await arduino.send(request.cmd)){
         let response = {
             sucess: false,
-            reason: request.cmd+' not solved!'
+            reason: request.cmd + ' not solved!'
         } as ArduinoResponse;
         res.send(response);
         return;
@@ -188,7 +210,7 @@ app.post('/cmd', async function(req, res) {
 
     response = {
         sucess: true,
-        reason: request.cmd+' executed sucefully!'
+        reason: request.cmd + ' executed sucefully!'
     } as ArduinoResponse;
     
     res.send(response);

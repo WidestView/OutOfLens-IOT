@@ -16,30 +16,29 @@ exports.Arduino = void 0;
 const serialport_1 = __importDefault(require("serialport"));
 const Readline = serialport_1.default.parsers.Readline;
 class Arduino {
-    //private DataLog:string[] = [];
-    constructor(name, serial) {
+    constructor(serial) {
         this.SerialPort = require('serialport');
-        this.ArduinoName = name;
         this.Serial = serial;
-        this.Parser = this.Serial.pipe(new Readline({ delimiter: '\n' }));
+        this.localParser = this.Serial.pipe(new Readline({ delimiter: '\n' }));
+        this.serverParser = this.Serial.pipe(new Readline({ delimiter: '\n' }));
+        this.serverParser.on('data', (data) => this.register(data));
     }
     ping() {
         return __awaiter(this, void 0, void 0, function* () {
             let port = this.Serial;
-            let parser = this.Parser;
-            let name = this.ArduinoName;
+            let parser = this.localParser;
             return new Promise(function (resolve, reject) {
-                console.log(name + ' pinged');
+                console.log('Pinging Arduino');
                 let done = false;
                 parser.on('data', (data) => {
                     done = true;
-                    console.log(name + ' pong');
+                    console.log('Arduino pong');
                     parser.removeAllListeners();
                     resolve(data.charAt(0) == 's');
                 });
                 setTimeout(() => {
                     if (!done) {
-                        console.log(name + ' timed out');
+                        console.log('Arduino timed out');
                         parser.removeAllListeners();
                         resolve(false);
                     }
@@ -49,18 +48,21 @@ class Arduino {
     }
     send(command) {
         let port = this.Serial;
-        let parser = this.Parser;
-        let name = this.ArduinoName;
+        let parser = this.localParser;
         return new Promise(function (resolve, reject) {
             port.write(command, function () {
-                console.log(name + ' send: ' + command);
+                console.log('Command sent to arduino: ' + command);
                 parser.on('data', (data) => {
-                    console.log(name + ' answered: ' + data.charAt(0));
+                    console.log('Arduino answered: ' + data.charAt(0));
                     parser.removeAllListeners();
                     resolve(data.charAt(0) == 'a');
                 });
             });
         });
+    }
+    register(data) {
+        console.log('REGISTERING: ' + data);
+        //IMPLEMENT SEND IT TO SERVERS
     }
 }
 exports.Arduino = Arduino;
