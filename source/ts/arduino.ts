@@ -1,6 +1,9 @@
 import SerialPort from 'serialport';
+import { crypto } from './crypto';
+import { PASSWORD } from './global';
 
 const Readline = SerialPort.parsers.Readline;
+const axios = require('axios');
 
 export class Arduino{
     public SerialPort = require('serialport')
@@ -57,7 +60,26 @@ export class Arduino{
     }
 
     private register(data:string):void{
-        console.log('REGISTERING: ' + data);
-        //IMPLEMENT SEND IT TO SERVERS
+
+        if(data.charAt(0) == 's'){
+            return;
+        }
+
+        // TO IMPLEMENT CRYPTOGRAPHY!!!!!!!!!!!!!!!!!!!!!!
+
+        let dataToSend = {
+            password : PASSWORD,
+            data : data
+        };
+
+        axios
+            .post(this.ApiUrl, dataToSend)
+            .then((res: any) => {
+                console.log(`Response statusCode: ${res.status}`);
+                console.log('Response: ' + res.data);
+            })
+            .catch((error: any) => {
+                console.error(error);
+            })
     }
 }

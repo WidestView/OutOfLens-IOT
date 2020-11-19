@@ -16,11 +16,11 @@ const dns_1 = __importDefault(require("dns"));
 const serialport_1 = __importDefault(require("serialport"));
 const express_1 = __importDefault(require("express"));
 const body_parser_1 = __importDefault(require("body-parser"));
-const crypto_js_1 = __importDefault(require("crypto-js"));
 const Readline = serialport_1.default.parsers.Readline;
 // Custom files
 const arduino_1 = require("./arduino");
 const global_1 = require("./global");
+const crypto_1 = require("./crypto");
 const defaultBaudRate = 9600;
 // Arguments reading
 /*! LINE ARGUMENTS SHOULD SPECIFY AT LEAST ONE URL FROM ALLOWED APIS AND ONE ARDUINO PORT!*/
@@ -28,14 +28,16 @@ const ARGUMENTS = process.argv.slice(2); // Remove default node arguments
 let WEB_PORT = 8000;
 let ALLOWED_IPS = [];
 let ARDUINO_PORT_PATH = '';
+let SERVER_API_URL = '';
 readLineArguments(ARGUMENTS);
 function readLineArguments(args) {
     // ALLOWED IPS (--allow)
-    if (args.indexOf('--allow') > -1) {
-        if (args.indexOf('--allow') !== args.lastIndexOf('--allow')) {
+    let indexOf = args.indexOf('--allow');
+    if (indexOf > -1) {
+        if (indexOf !== args.lastIndexOf('--allow')) {
             throw Error('Specify only one series of allowed servers!');
         }
-        let index = args.indexOf('--allow') + 1;
+        let index = indexOf + 1;
         let stop = false;
         while (!stop) {
             if (args.length <= index) {
@@ -63,49 +65,58 @@ function readLineArguments(args) {
         throw Error('Specify at least one allowed URL as line arguments, use \'--allow\'!');
     }
     // ARDUINO (--arduino)
-    if (args.indexOf('--arduino') > -1) {
-        if (args.indexOf('--arduino') !== args.lastIndexOf('--arduino')) {
+    indexOf = args.indexOf('--arduino');
+    if (indexOf > -1) {
+        if (indexOf !== args.lastIndexOf('--arduino')) {
             throw Error('Specify only one arduino!');
         }
-        if (args.length <= args.indexOf('--arduino') + 1) {
+        if (args.length <= indexOf + 1) {
             throw Error('Specify a serial port for your \'--arduino\' argument!');
         }
-        ARDUINO_PORT_PATH = args[args.indexOf('--arduino') + 1];
+        ARDUINO_PORT_PATH = args[indexOf + 1];
     }
     else {
-        throw Error('Specify one arduino as line arguments, use \'--arduino\'!');
+        throw Error('Specify one api as line arguments, use \'--arduino\'!');
+    }
+    // API (--api)
+    indexOf = args.indexOf('--api');
+    if (indexOf > -1) {
+        if (indexOf !== args.lastIndexOf('--api')) {
+            throw Error('Specify only one api!');
+        }
+        if (args.length <= indexOf + 1) {
+            throw Error('Specify an api for your \'--api\' argument!');
+        }
+        SERVER_API_URL = args[indexOf + 1];
+        console.log('API URL defined to ' + SERVER_API_URL);
+    }
+    else {
+        throw Error('Specify one api as line arguments, use \'--api\'!');
     }
     // CUSTOM WEB PORT ARGUMENT (--port)
-    if (args.indexOf('--port') > -1) {
-        if (args.indexOf('--port') !== args.lastIndexOf('--port')) {
+    indexOf = args.indexOf('--port');
+    if (indexOf > -1) {
+        if (indexOf !== args.lastIndexOf('--port')) {
             throw Error('Specify only one web port as line argument!');
         }
-        if (args.length <= args.indexOf('--port') + 1) {
+        if (args.length <= indexOf + 1) {
             throw Error('Specify a web port for your \'--port\' argument!');
         }
-        if (isNaN(Number(args[args.indexOf('--port') + 1]))) {
+        if (isNaN(Number(args[indexOf + 1]))) {
             throw Error('Specify a valid web port for your \'--port\' argument!');
         }
-        WEB_PORT = Number(args[args.indexOf('--port') + 1]);
+        WEB_PORT = Number(args[indexOf + 1]);
     }
 }
 /// Server Functions
-function decrypt(data) {
-    const result = crypto_js_1.default.AES.decrypt(data, global_1.DECKEY);
-    return result.toString(crypto_js_1.default.enc.Utf8);
-}
-function encrypt(data) {
-    const result = crypto_js_1.default.AES.encrypt(data, global_1.DECKEY).toString();
-    return result;
-}
-function hash(data) {
-    return crypto_js_1.default.SHA256(data).toString();
-}
 function validateCrendential(credential) {
-    const isAllowed = ALLOWED_IPS.some(ip => credential.ip === ip && credential.password === global_1.PASSWORD);
+    const ipAllowed = ALLOWED_IPS.some(ip => credential.ip === ip);
+    const passAllowed = credential.password === global_1.PASSWORD;
+    console.log('Ip (' + credential.ip + '): ' + (ipAllowed ? 'Ok' : 'Negado'));
+    console.log('Senha: ' + (passAllowed ? 'Ok' : 'Negada'));
     let response = {
-        sucess: isAllowed,
-        reason: isAllowed ? '' : 'Invalid Credentials'
+        sucess: ipAllowed && passAllowed,
+        reason: ipAllowed && passAllowed ? '' : 'Invalid Credentials'
     };
     return response;
 }
@@ -120,7 +131,7 @@ function createArduino(portPath) {
                 ports.forEach((port) => console.log(port.path));
                 reject('No port matches ' + portPath);
             }
-            let arduino = new arduino_1.Arduino(new serialport_1.default(portPath, { baudRate: defaultBaudRate }));
+            let arduino = new arduino_1.Arduino(new serialport_1.default(portPath, { baudRate: defaultBaudRate }), SERVER_API_URL);
             if (yield arduino.ping()) {
                 resolve(arduino);
             }
@@ -146,11 +157,11 @@ app.use(body_parser_1.default.json());
 app.listen(WEB_PORT, () => console.log(`Server started at http://localhost:${WEB_PORT}`));
 app.post('/cmd', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     //CHECK CREDENTIALS
-    let credentials = { ip: req.ip.substring(req.ip.lastIndexOf(':') + 1), password: decrypt(req.body.password) };
+    let credentials = { ip: req.ip.substring(req.ip.lastIndexOf(':') + 1), password: crypto_1.crypto.decrypt(req.body.password) };
     if (credentials.password === "") {
         let response = {
             sucess: false,
-            reason: encrypt('Password could not be decrypted!')
+            reason: crypto_1.crypto.encrypt('Password could not be decrypted!')
         };
         res.send(response);
         return;
@@ -160,11 +171,11 @@ app.post('/cmd', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
         res.send(JSON.stringify(response));
         return;
     }
-    let request = { cmd: decrypt(req.body.cmd) };
+    let request = { cmd: crypto_1.crypto.decrypt(req.body.cmd) };
     if (request.cmd === "") {
         let response = {
             sucess: false,
-            reason: encrypt('Command could not be decrypted!')
+            reason: crypto_1.crypto.encrypt('Command could not be decrypted!')
         };
         res.send(response);
         return;
@@ -172,15 +183,20 @@ app.post('/cmd', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     if (!(yield arduino.send(request.cmd))) {
         let response = {
             sucess: false,
-            reason: encrypt(request.cmd + ' not solved!')
+            reason: crypto_1.crypto.encrypt(request.cmd + ' not solved!')
         };
         res.send(response);
         return;
     }
     response = {
         sucess: true,
-        reason: encrypt(request.cmd + ' executed sucefully!')
+        reason: crypto_1.crypto.encrypt(request.cmd + ' executed sucefully!')
     };
     res.send(response);
+    return;
+}));
+app.post('/api-test', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    let request = req.body;
+    res.send('Data saved on FAKE DATABASE');
     return;
 }));

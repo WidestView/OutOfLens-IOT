@@ -14,7 +14,7 @@
 
 
 /*DECLARATIONS*/
-#define BUZZER 5
+#define LED 2
 
 
 
@@ -22,7 +22,7 @@
 
 void setup() {
   //PIN DEFINITION
-  pinMode(BUZZER, OUTPUT);
+  pinMode(LED, OUTPUT);
 
   //SERIAL DEFINITION
   Serial.begin(9600);
@@ -30,7 +30,7 @@ void setup() {
   //Buzz for setup end 's' for setup done
   Serial.println('s');
   
-  buzz(BUZZER, 3);
+  twinkle(LED, 3);
 }
 
 void loop() {
@@ -42,17 +42,17 @@ void loop() {
 
     case 'a':
       Serial.println('a');
-      buzz(BUZZER, 1);
+      twinkle(LED, 1);
       break;
 
     default:
       Serial.println('d');
-      buzz(BUZZER, 2);
+      twinkle(LED, 2);
     }
   }
 }
 
-void buzz(int pin, int times) {
+void twinkle(int pin, int times) {
   for (int i = 0; i < times; i++) {
     digitalWrite(pin, HIGH);
     delay(100);

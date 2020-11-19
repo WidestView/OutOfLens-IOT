@@ -14,14 +14,17 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.Arduino = void 0;
 const serialport_1 = __importDefault(require("serialport"));
+const global_1 = require("./global");
 const Readline = serialport_1.default.parsers.Readline;
+const axios = require('axios');
 class Arduino {
-    constructor(serial) {
+    constructor(serial, url) {
         this.SerialPort = require('serialport');
         this.Serial = serial;
         this.localParser = this.Serial.pipe(new Readline({ delimiter: '\n' }));
         this.serverParser = this.Serial.pipe(new Readline({ delimiter: '\n' }));
         this.serverParser.on('data', (data) => this.register(data));
+        this.ApiUrl = url;
     }
     ping() {
         return __awaiter(this, void 0, void 0, function* () {
@@ -61,8 +64,23 @@ class Arduino {
         });
     }
     register(data) {
-        console.log('REGISTERING: ' + data);
-        //IMPLEMENT SEND IT TO SERVERS
+        if (data.charAt(0) == 's') {
+            return;
+        }
+        // TO IMPLEMENT CRYPTOGRAPHY!!!!!!!!!!!!!!!!!!!!!!
+        let dataToSend = {
+            password: global_1.PASSWORD,
+            data: data
+        };
+        axios
+            .post(this.ApiUrl, dataToSend)
+            .then((res) => {
+            console.log(`Response statusCode: ${res.status}`);
+            console.log('Response: ' + res.data);
+        })
+            .catch((error) => {
+            console.error(error);
+        });
     }
 }
 exports.Arduino = Arduino;

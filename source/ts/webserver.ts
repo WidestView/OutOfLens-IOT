@@ -2,7 +2,6 @@ import dns        from 'dns';
 import SerialPort from 'serialport';
 import express    from 'express';
 import bodyParser from 'body-parser';
-import cryptoJs   from 'crypto-js';
 
 const Readline = SerialPort.parsers.Readline;
 
@@ -14,7 +13,8 @@ import Credential               = Interfaces.Credential;
 
 // Custom files
 import { Arduino } from './arduino';
-import { PASSWORD, DECKEY } from './global';
+import { PASSWORD } from './global';
+import { crypto } from './crypto';
 
 const defaultBaudRate = 9600;
 
@@ -35,13 +35,14 @@ function readLineArguments(args:string[]){
 
     // ALLOWED IPS (--allow)
 
-    if(args.indexOf('--allow') > -1){
+    let indexOf = args.indexOf('--allow');
+    if( indexOf > -1){
 
-        if(args.indexOf('--allow') !== args.lastIndexOf('--allow')){
+        if(indexOf !== args.lastIndexOf('--allow')){
             throw Error('Specify only one series of allowed servers!');
         }
 
-        let index = args.indexOf('--allow') + 1;
+        let index = indexOf + 1;
         let stop = false;
 
         while(!stop){
@@ -78,82 +79,77 @@ function readLineArguments(args:string[]){
 
     // ARDUINO (--arduino)
 
-    if(args.indexOf('--arduino') > -1){
+    indexOf = args.indexOf('--arduino');
+    if( indexOf > -1){
 
-        if(args.indexOf('--arduino') !== args.lastIndexOf('--arduino')){
+        if(indexOf !== args.lastIndexOf('--arduino')){
             throw Error('Specify only one arduino!');
         }
 
-        if(args.length <= args.indexOf('--arduino') + 1){
+        if(args.length <= indexOf + 1){
             throw Error('Specify a serial port for your \'--arduino\' argument!');
         }
 
-        SERVER_API_URL = args[args.indexOf('--api') + 1]
+        ARDUINO_PORT_PATH  = args[indexOf + 1]
         
     }else{
-        throw Error('Specify one api as line arguments, use \'--api\'!');
+        throw Error('Specify one api as line arguments, use \'--arduino\'!');
     }
 
     // API (--api)
 
-    if(args.indexOf('--api') > -1){
+    indexOf = args.indexOf('--api');
+    if( indexOf > -1){
 
-        if(args.indexOf('--api') !== args.lastIndexOf('--api')){
+        if(indexOf !== args.lastIndexOf('--api')){
             throw Error('Specify only one api!');
         }
 
-        if(args.length <= args.indexOf('--api') + 1){
+        if(args.length <= indexOf + 1){
             throw Error('Specify an api for your \'--api\' argument!');
         }
 
-        ARDUINO_PORT_PATH = args[args.indexOf('--arduino') + 1]
+        SERVER_API_URL = args[indexOf + 1]
+
+        console.log('API URL defined to ' + SERVER_API_URL);
         
     }else{
-        throw Error('Specify one arduino as line arguments, use \'--arduino\'!');
+        throw Error('Specify one api as line arguments, use \'--api\'!');
     }
-
+    
     // CUSTOM WEB PORT ARGUMENT (--port)
 
-    if(args.indexOf('--port') > -1){
+    indexOf = args.indexOf('--port');
+    if( indexOf > -1){
 
-        if(args.indexOf('--port') !== args.lastIndexOf('--port')){
+        if(indexOf !== args.lastIndexOf('--port')){
             throw Error('Specify only one web port as line argument!');
         }
 
-        if(args.length <= args.indexOf('--port') + 1){
+        if(args.length <= indexOf + 1){
             throw Error('Specify a web port for your \'--port\' argument!');
         }
 
-        if(isNaN(Number(args[args.indexOf('--port') + 1]))){
+        if(isNaN(Number(args[indexOf + 1]))){
             throw Error('Specify a valid web port for your \'--port\' argument!');
         }
 
-        WEB_PORT = Number(args[args.indexOf('--port') + 1]);
+        WEB_PORT = Number(args[indexOf + 1]);
     }
 
 }
 
 /// Server Functions
 
-function decrypt(data: string){
-    const result = cryptoJs.AES.decrypt(data, DECKEY);
-    return result.toString(cryptoJs.enc.Utf8);
-}
-
-function encrypt(data: string){
-    const result = cryptoJs.AES.encrypt(data, DECKEY).toString()
-    return result;
-}
-
-function hash(data: string){
-    return cryptoJs.SHA256(data).toString();
-}
-
 function validateCrendential(credential : Credential) {
-    const isAllowed = ALLOWED_IPS.some( ip => credential.ip === ip && credential.password === PASSWORD);
+    const ipAllowed = ALLOWED_IPS.some( ip => credential.ip === ip );
+    const passAllowed = credential.password === PASSWORD;
+
+    console.log('Ip (' + credential.ip + '): ' + (ipAllowed? 'Ok':'Negado'));
+    console.log('Senha: ' + (passAllowed? 'Ok':'Negada'));
     let response = {
-        sucess: isAllowed,
-        reason: isAllowed? '':'Invalid Credentials'
+        sucess: ipAllowed && passAllowed,
+        reason: ipAllowed && passAllowed? '':'Invalid Credentials'
     } as ArduinoResponse;
     return response;
 }
@@ -221,12 +217,12 @@ app.post('/cmd', async (req, res)=>{
 
     //CHECK CREDENTIALS
 
-    let credentials = { ip:req.ip.substring(req.ip.lastIndexOf(':')+1),password:decrypt(req.body.password) } as Credential;
+    let credentials = { ip:req.ip.substring(req.ip.lastIndexOf(':')+1),password:crypto.decrypt(req.body.password) } as Credential;
 
     if(credentials.password === ""){
         let response = {
             sucess: false,
-            reason: encrypt('Password could not be decrypted!')
+            reason: crypto.encrypt('Password could not be decrypted!')
         } as ArduinoResponse;
         res.send(response);
         return;
@@ -238,12 +234,12 @@ app.post('/cmd', async (req, res)=>{
         return;
     }
 
-    let request = {cmd: decrypt(req.body.cmd)} as ArduinoCommandRequest;
+    let request = {cmd: crypto.decrypt(req.body.cmd)} as ArduinoCommandRequest;
 
     if(request.cmd === ""){
         let response = {
             sucess: false,
-            reason: encrypt('Command could not be decrypted!')
+            reason: crypto.encrypt('Command could not be decrypted!')
         } as ArduinoResponse;
         res.send(response);
         return;
@@ -252,7 +248,7 @@ app.post('/cmd', async (req, res)=>{
     if(!await arduino.send(request.cmd)){
         let response = {
             sucess: false,
-            reason: encrypt(request.cmd + ' not solved!')
+            reason: crypto.encrypt(request.cmd + ' not solved!')
         } as ArduinoResponse;
         res.send(response);
         return;
@@ -260,9 +256,16 @@ app.post('/cmd', async (req, res)=>{
 
     response = {
         sucess: true,
-        reason: encrypt(request.cmd + ' executed sucefully!')
+        reason: crypto.encrypt(request.cmd + ' executed sucefully!')
     } as ArduinoResponse;
     
     res.send(response);
+    return;
+});
+
+app.post('/api-test', async (req, res)=>{
+    let request = req.body;
+
+    res.send('Data saved on FAKE DATABASE');
     return;
 });
