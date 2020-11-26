@@ -7,12 +7,14 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "win-server": "node .\\source\\js\\webserver.js --allow beserrovsky.ddns.net beepboop.tk localhost --arduino COM3 --api 127.0.0.1",
-    "linux-server": "node .\\source\\js\\webserver.js --allow beserrovsky.ddns.net beepboop.tk --arduino /dev/ttyacm0 --api 127.0.0.1"
+    "linux-server": "node ./source/js/webserver.js --allow beserrovsky.ddns.net beepboop.tk --arduino /dev/pts/1 --api 127.0.0.1",
+    "rasp-server": "node ./source/js/webserver.js --allow beserrovsky.ddns.net beepboop.tk --arduino /dev/ttyacm0 --api 127.0.0.1"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@types/axios": "^0.14.0",
     "@types/crypto-js": "^4.0.1",
     "@types/express": "^4.17.8",
     "@types/node": "^14.10.1",

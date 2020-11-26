@@ -3,7 +3,7 @@ export namespace Interfaces {
         cmd:string
     }
     export interface ArduinoResponse {
-        sucess : boolean,
+        success : boolean,
         reason : string
     }
     export interface Credential {

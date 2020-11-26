@@ -23,3 +23,4 @@ var crypto;
     }
     crypto.hash = hash;
 })(crypto = exports.crypto || (exports.crypto = {}));
+//# sourceMappingURL=crypto.js.map

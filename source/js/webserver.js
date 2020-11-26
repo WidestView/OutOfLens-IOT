@@ -16,11 +16,11 @@ const dns_1 = __importDefault(require("dns"));
 const serialport_1 = __importDefault(require("serialport"));
 const express_1 = __importDefault(require("express"));
 const body_parser_1 = __importDefault(require("body-parser"));
-const Readline = serialport_1.default.parsers.Readline;
 // Custom files
 const arduino_1 = require("./arduino");
 const global_1 = require("./global");
-const crypto_1 = require("./crypto");
+const request_manager_1 = require("./request-manager");
+const user_space_credentials_1 = require("./user-space-credentials");
 const defaultBaudRate = 9600;
 // Arguments reading
 /*! LINE ARGUMENTS SHOULD SPECIFY AT LEAST ONE URL FROM ALLOWED APIS AND ONE ARDUINO PORT!*/
@@ -49,7 +49,7 @@ function readLineArguments(args) {
                 }
             }
             if (!stop) {
-                dns_1.default.lookup(args[index], (err, address, family) => {
+                dns_1.default.lookup(args[index], (err, address) => {
                     if (err) {
                         console.log(err);
                         return;
@@ -114,42 +114,49 @@ function validateCrendential(credential) {
     const passAllowed = credential.password === global_1.PASSWORD;
     console.log('Ip (' + credential.ip + '): ' + (ipAllowed ? 'Ok' : 'Negado'));
     console.log('Senha: ' + (passAllowed ? 'Ok' : 'Negada'));
-    let response = {
-        sucess: ipAllowed && passAllowed,
+    return {
+        success: ipAllowed && passAllowed,
         reason: ipAllowed && passAllowed ? '' : 'Invalid Credentials'
     };
-    return response;
 }
+const DEBUG_ARDUINO_PATHS = ['/dev/pts/1'];
 /// Arduino Functions
 function createArduino(portPath) {
     return __awaiter(this, void 0, void 0, function* () {
-        return new Promise((resolve, reject) => __awaiter(this, void 0, void 0, function* () {
-            let ports = yield serialport_1.default.list();
-            let result = ports.some(port => port.path === portPath);
-            if (!result) {
-                console.log('Ports connected to pc: ');
-                ports.forEach((port) => console.log(port.path));
-                reject('No port matches ' + portPath);
-            }
-            let arduino = new arduino_1.Arduino(new serialport_1.default(portPath, { baudRate: defaultBaudRate }), SERVER_API_URL);
-            if (yield arduino.ping()) {
-                resolve(arduino);
-            }
-            else {
-                reject('Arduino did not answered ping');
-            }
-        }));
+        let ports = yield serialport_1.default.list();
+        let result = ports.some(port => port.path === portPath) || DEBUG_ARDUINO_PATHS.some(port => port === portPath);
+        if (!result) {
+            console.log('Ports connected to pc: ');
+            ports.forEach((port) => console.log(port.path));
+            throw 'No port matches ' + portPath;
+        }
+        let arduino = new arduino_1.Arduino(new serialport_1.default(portPath, { baudRate: defaultBaudRate }), SERVER_API_URL);
+        if (yield arduino.ping()) {
+            return arduino;
+        }
+        else {
+            throw 'Arduino did not answered ping';
+        }
     });
 }
-// Arduino Creation 
+// Arduino Creation
 if (ARDUINO_PORT_PATH == '') {
     throw new Error('Something gone wrong and the server tried to start whitout an Serial Port Path for the Arduino');
 }
 let arduino;
+const JUMP_TO_TEST = true;
 const startArduino = () => __awaiter(void 0, void 0, void 0, function* () {
     arduino = yield createArduino(ARDUINO_PORT_PATH);
 });
-startArduino();
+if (!JUMP_TO_TEST) {
+    startArduino().then().catch(error => {
+        console.error('ERROR: Arduino failed to start:', error);
+        console.error(error);
+    });
+}
+else {
+    new request_manager_1.RequestManager().send('http://localhost:5000/api/logdata', 'beep').then();
+}
 /// This Side Webserver
 const app = express_1.default();
 app.use(body_parser_1.default.urlencoded());
@@ -157,46 +164,45 @@ app.use(body_parser_1.default.json());
 app.listen(WEB_PORT, () => console.log(`Server started at http://localhost:${WEB_PORT}`));
 app.post('/cmd', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     //CHECK CREDENTIALS
-    let credentials = { ip: req.ip.substring(req.ip.lastIndexOf(':') + 1), password: crypto_1.crypto.decrypt(req.body.password) };
+    let credentials = {
+        ip: req.ip.substring(req.ip.lastIndexOf(':') + 1),
+        password: user_space_credentials_1.userSpaceCredentials.decrypt(req.body.password)
+    };
     if (credentials.password === "") {
         let response = {
-            sucess: false,
-            reason: crypto_1.crypto.encrypt('Password could not be decrypted!')
+            success: false,
+            reason: user_space_credentials_1.userSpaceCredentials.encrypt('Password could not be decrypted!')
         };
         res.send(response);
         return;
     }
     let response = validateCrendential(credentials);
-    if (!response.sucess) {
+    if (!response.success) {
         res.send(JSON.stringify(response));
         return;
     }
-    let request = { cmd: crypto_1.crypto.decrypt(req.body.cmd) };
+    let request = { cmd: user_space_credentials_1.userSpaceCredentials.decrypt(req.body.cmd) };
     if (request.cmd === "") {
         let response = {
-            sucess: false,
-            reason: crypto_1.crypto.encrypt('Command could not be decrypted!')
+            success: false,
+            reason: user_space_credentials_1.userSpaceCredentials.encrypt('Command could not be decrypted!')
         };
         res.send(response);
         return;
     }
     if (!(yield arduino.send(request.cmd))) {
         let response = {
-            sucess: false,
-            reason: crypto_1.crypto.encrypt(request.cmd + ' not solved!')
+            success: false,
+            reason: user_space_credentials_1.userSpaceCredentials.encrypt(request.cmd + ' not solved!')
         };
         res.send(response);
         return;
     }
     response = {
-        sucess: true,
-        reason: crypto_1.crypto.encrypt(request.cmd + ' executed sucefully!')
+        success: true,
+        reason: user_space_credentials_1.userSpaceCredentials.encrypt(request.cmd + ' executed sucefully!')
     };
     res.send(response);
     return;
 }));
-app.post('/api-test', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    let request = req.body;
-    res.send('Data saved on FAKE DATABASE');
-    return;
-}));
+//# sourceMappingURL=webserver.js.map
